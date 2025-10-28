@@ -1,7 +1,7 @@
 from faststream import FastStream
-from faststream.kafka import KafkaBroker
+from faststream.rabbit import RabbitBroker
 
-broker = KafkaBroker("127.0.0.1:9092")
+broker = RabbitBroker("amqp://root:root123@localhost:5672/")
 
 app = FastStream(broker)
 
