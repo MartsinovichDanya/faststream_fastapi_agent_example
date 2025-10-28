@@ -1,7 +1,7 @@
 version: '3'
 services:
   kafka:
-    image: sberosc.sigma.sbrf.ru/docker.io/apache/kafka:4.1.0
+    image: 
     ports:
       - "9092:9092"
     environment:
@@ -18,7 +18,7 @@ services:
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
 
   kafka-ui:
-    image: sberosc.sigma.sbrf.ru/ghcr.io/kafbat/kafka-ui:v1.3.0
+    image: 
     depends_on:
       - kafka
     ports:
