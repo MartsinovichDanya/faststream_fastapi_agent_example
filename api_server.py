@@ -44,8 +44,14 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/")
 async def index():
-    with open(os.path.join(static_dir, "index.html"), "r", encoding="utf-8") as f:
+    with open(os.path.join(static_dir, "dev_index.html"), "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
+
+
+@app.get("/logs")
+async def index():
+    with open("logs/app.log", "r", encoding="utf-8") as f:
+        return f.read()
 
 
 @app.post("/send_message", response_model=ChatResponse)
@@ -69,4 +75,4 @@ async def send_message(request: CheckRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, port=8080)
+    uvicorn.run(app, port=8080, log_config="config/log.ini")

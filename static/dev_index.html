@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат с логами</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 40px);
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .chat-section, .logs-section {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 500px;
+        }
+
+        .logs-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 500px;
+        }
+
+        .section-header {
+            background: #4a5568;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f7fafc;
+        }
+
+        .logs-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #1a202c;
+            color: #cbd5e0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .user-message {
+            justify-content: flex-end;
+        }
+
+        .bot-message {
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .user-message .message-bubble {
+            background: #4299e1;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .bot-message .message-bubble {
+            background: white;
+            color: #2d3748;
+            border: 1px solid #e2e8f0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4299e1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-text {
+            color: #718096;
+            font-size: 0.9em;
+            font-style: italic;
+        }
+
+        .chat-input {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #cbd5e0;
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        #messageInput:focus {
+            border-color: #4299e1;
+        }
+
+        #sendButton {
+            padding: 12px 24px;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        #sendButton:hover {
+            background: #3182ce;
+        }
+
+        #sendButton:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+
+        .timestamp {
+            font-size: 0.7em;
+            color: #a0aec0;
+            margin-top: 5px;
+        }
+
+        .error {
+            color: #e53e3e;
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+        }
+
+        .log-timestamp {
+            color: #718096;
+        }
+
+        .log-info {
+            color: #68d391;
+        }
+
+        .log-error {
+            color: #fc8181;
+        }
+
+        .log-warning {
+            color: #f6e05e;
+        }
+
+        .log-debug {
+            color: #63b3ed;
+        }
+
+        .logs-controls {
+            padding: 10px 20px;
+            background: #2d3748;
+            border-bottom: 1px solid #4a5568;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #refreshLogs {
+            padding: 8px 16px;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        #refreshLogs:hover {
+            background: #3182ce;
+        }
+
+        #autoRefresh {
+            margin-left: auto;
+        }
+
+        .auto-refresh-label {
+            color: #cbd5e0;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Левая часть - Чат -->
+        <div class="chat-section">
+            <div class="section-header">
+                Чат
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot-message">
+                    <div class="message-bubble">
+                        Привет! Я готов отвечать на ваши сообщения. Отправьте мне что-нибудь!
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input">
+                <input type="text" id="messageInput" placeholder="Введите ваше сообщение..." autocomplete="off">
+                <button id="sendButton">Отправить</button>
+            </div>
+        </div>
+
+        <!-- Правая часть - Логи -->
+        <div class="logs-section">
+            <div class="section-header">
+                Логи сервера
+            </div>
+
+            <div class="logs-controls">
+                <button id="refreshLogs">Обновить логи</button>
+                <label class="auto-refresh-label">
+                    <input type="checkbox" id="autoRefresh" checked>
+                    Автообновление
+                </label>
+            </div>
+
+            <div class="logs-content" id="logsContent">
+                Загрузка логов...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class Chat {
+            constructor() {
+                this.messagesContainer = document.getElementById('chatMessages');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.logsContent = document.getElementById('logsContent');
+                this.refreshLogsButton = document.getElementById('refreshLogs');
+                this.autoRefreshCheckbox = document.getElementById('autoRefresh');
+                this.taskCheckIntervals = new Map();
+                this.logsRefreshInterval = null;
+                this.apiBaseUrl = 'http://localhost:8080';
+
+                this.initEventListeners();
+                this.startLogsAutoRefresh();
+            }
+
+            initEventListeners() {
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+
+                this.refreshLogsButton.addEventListener('click', () => this.loadLogs());
+                this.autoRefreshCheckbox.addEventListener('change', () => {
+                    if (this.autoRefreshCheckbox.checked) {
+                        this.startLogsAutoRefresh();
+                    } else {
+                        this.stopLogsAutoRefresh();
+                    }
+                });
+            }
+
+            async sendMessage() {
+                const message = this.messageInput.value.trim();
+                if (!message) return;
+
+                // Очищаем поле ввода
+                this.messageInput.value = '';
+                this.setInputState(false);
+
+                // Добавляем сообщение пользователя в чат
+                this.addMessage(message, 'user');
+
+                // Добавляем индикатор загрузки для ответа бота
+                const loadingMessageId = this.addLoadingMessage();
+
+                try {
+                    // Шаг 1: Отправляем сообщение и получаем ID задачи
+                    const taskId = await this.sendMessageToAPI(message);
+
+                    // Обновляем сообщение с информацией о получении taskId
+                    this.updateLoadingMessage(loadingMessageId, `Задача создана (ID: ${taskId}). Ожидаем ответ...`);
+
+                    // Шаг 2: Начинаем проверять статус задачи
+                    this.startTaskChecking(taskId, loadingMessageId);
+
+                } catch (error) {
+                    this.updateLoadingMessage(loadingMessageId, `Ошибка: ${error.message}`, true);
+                    this.setInputState(true);
+                }
+            }
+
+            async sendMessageToAPI(message) {
+                const apiUrl = `${this.apiBaseUrl}/send_message`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        msg: message
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.req_id) {
+                    throw new Error('Неверный формат ответа: отсутствует id');
+                }
+
+                return data.req_id;
+            }
+
+            async checkTaskStatus(taskId) {
+                const apiUrl = `${this.apiBaseUrl}/check_status`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        req_id: taskId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Проверяем структуру ответа
+                if (!data.req_id || !data.status) {
+                    throw new Error('Неверный формат ответа: отсутствует req_id или status');
+                }
+
+                return {
+                    status: data.status,
+                    result: data.result || null
+                };
+            }
+
+            startTaskChecking(taskId, messageId) {
+                const checkInterval = setInterval(async () => {
+                    try {
+                        const result = await this.checkTaskStatus(taskId);
+
+                        if (result.status === 'done') {
+                            // Задача завершена, показываем результат
+                            clearInterval(checkInterval);
+                            this.taskCheckIntervals.delete(taskId);
+                            this.updateLoadingMessage(messageId, result.result || 'Ответ получен');
+                            this.setInputState(true);
+                        } else if (result.status === 'error') {
+                            // Произошла ошибка при обработке
+                            clearInterval(checkInterval);
+                            this.taskCheckIntervals.delete(taskId);
+                            this.updateLoadingMessage(messageId, `Ошибка обработки: ${result.result || 'Неизвестная ошибка'}`, true);
+                            this.setInputState(true);
+                        } else {
+                            // Задача еще в процессе, обновляем статус
+                            const statusMessages = {
+                                'processing': 'Обрабатываю ваш запрос...',
+                                'pending': 'Запрос в очереди...',
+                                'started': 'Начинаю обработку...'
+                            };
+                            const statusText = statusMessages[result.status] || `Статус: ${result.status}`;
+                            this.updateLoadingMessage(messageId, statusText);
+                        }
+                    } catch (error) {
+                        clearInterval(checkInterval);
+                        this.taskCheckIntervals.delete(taskId);
+                        this.updateLoadingMessage(messageId, `Ошибка при проверке статуса: ${error.message}`, true);
+                        this.setInputState(true);
+                    }
+                }, 1000);
+
+                this.taskCheckIntervals.set(taskId, checkInterval);
+            }
+
+            async loadLogs() {
+                try {
+                    const response = await fetch('/logs');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const logText = await response.text();
+                    this.displayLogs(logText);
+                } catch (error) {
+                    this.logsContent.textContent = `Ошибка загрузки логов: ${error.message}`;
+                }
+            }
+
+            displayLogs(logText) {
+                // Разбиваем логи на строки и добавляем подсветку
+                const lines = logText.split('\n');
+                const highlightedLines = lines.map(line => {
+                    // Пропускаем пустые строки
+                    if (!line.trim()) return line;
+
+                    // Добавляем подсветку для разных уровней логов
+                    let highlightedLine = line;
+
+                    // Подсветка временных меток
+                    highlightedLine = highlightedLine.replace(
+                        /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/g,
+                        '<span class="log-timestamp">$1</span>'
+                    );
+
+                    // Подсветка уровней логов
+                    highlightedLine = highlightedLine.replace(
+                        /\[INFO\]/g,
+                        '<span class="log-info">[INFO]</span>'
+                    );
+                    highlightedLine = highlightedLine.replace(
+                        /\[ERROR\]/g,
+                        '<span class="log-error">[ERROR]</span>'
+                    );
+                    highlightedLine = highlightedLine.replace(
+                        /\[WARNING\]/g,
+                        '<span class="log-warning">[WARNING]</span>'
+                    );
+                    highlightedLine = highlightedLine.replace(
+                        /\[DEBUG\]/g,
+                        '<span class="log-debug">[DEBUG]</span>'
+                    );
+
+                    return highlightedLine;
+                }).join('\n');
+
+                this.logsContent.innerHTML = highlightedLines;
+
+                // Прокручиваем вниз
+                this.logsContent.scrollTop = this.logsContent.scrollHeight;
+            }
+
+            startLogsAutoRefresh() {
+                // Загружаем логи сразу
+                this.loadLogs();
+
+                // Устанавливаем интервал обновления
+                this.logsRefreshInterval = setInterval(() => {
+                    this.loadLogs();
+                }, 500);
+            }
+
+            stopLogsAutoRefresh() {
+                if (this.logsRefreshInterval) {
+                    clearInterval(this.logsRefreshInterval);
+                    this.logsRefreshInterval = null;
+                }
+            }
+
+            addMessage(text, type) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}-message`;
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+                bubble.textContent = text;
+
+                const timestamp = document.createElement('div');
+                timestamp.className = 'timestamp';
+                timestamp.textContent = new Date().toLocaleTimeString();
+
+                messageDiv.appendChild(bubble);
+                messageDiv.appendChild(timestamp);
+                this.messagesContainer.appendChild(messageDiv);
+
+                // Прокручиваем вниз
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+
+                return messageDiv;
+            }
+
+            addLoadingMessage() {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message bot-message';
+                messageDiv.id = 'loading_' + Date.now();
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+
+                const loadingSpinner = document.createElement('div');
+                loadingSpinner.className = 'loading';
+
+                const statusText = document.createElement('span');
+                statusText.className = 'status-text';
+                statusText.textContent = 'Отправляем запрос...';
+
+                bubble.appendChild(loadingSpinner);
+                bubble.appendChild(statusText);
+                messageDiv.appendChild(bubble);
+
+                this.messagesContainer.appendChild(messageDiv);
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+
+                return messageDiv.id;
+            }
+
+            updateLoadingMessage(messageId, text, isError = false) {
+                const messageDiv = document.getElementById(messageId);
+                if (!messageDiv) return;
+
+                const bubble = messageDiv.querySelector('.message-bubble');
+                bubble.innerHTML = '';
+
+                if (isError) {
+                    bubble.className = 'message-bubble error';
+                    bubble.textContent = text;
+
+                    // Добавляем timestamp для сообщения об ошибке
+                    const timestamp = document.createElement('div');
+                    timestamp.className = 'timestamp';
+                    timestamp.textContent = new Date().toLocaleTimeString();
+                    messageDiv.appendChild(timestamp);
+                } else {
+                    bubble.className = 'message-bubble';
+                    if (text.includes('Обрабатываю') || text.includes('Ожидаем') || text.includes('Статус:') || text.includes('Запрос в очереди') || text.includes('Начинаю обработку')) {
+                        const loadingSpinner = document.createElement('div');
+                        loadingSpinner.className = 'loading';
+                        loadingSpinner.style.display = 'inline-block';
+
+                        const statusText = document.createElement('span');
+                        statusText.className = 'status-text';
+                        statusText.textContent = text;
+                        statusText.style.marginLeft = '10px';
+
+                        bubble.appendChild(loadingSpinner);
+                        bubble.appendChild(statusText);
+                    } else {
+                        // Это финальный ответ
+                        bubble.textContent = text;
+
+                        // Добавляем timestamp для завершенного сообщения
+                        const timestamp = document.createElement('div');
+                        timestamp.className = 'timestamp';
+                        timestamp.textContent = new Date().toLocaleTimeString();
+                        messageDiv.appendChild(timestamp);
+                    }
+                }
+
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+            }
+
+            setInputState(enabled) {
+                this.sendButton.disabled = !enabled;
+                this.messageInput.disabled = !enabled;
+
+                if (enabled) {
+                    this.messageInput.focus();
+                }
+            }
+        }
+
+        // Инициализация чата при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            new Chat();
+        });
+    </script>
+</body>
+</html>
