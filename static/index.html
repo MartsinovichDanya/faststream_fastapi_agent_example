@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат с асинхронным API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: #4a5568;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f7fafc;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .user-message {
+            justify-content: flex-end;
+        }
+
+        .bot-message {
+            justify-content: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .user-message .message-bubble {
+            background: #4299e1;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .bot-message .message-bubble {
+            background: white;
+            color: #2d3748;
+            border: 1px solid #e2e8f0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4299e1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-text {
+            color: #718096;
+            font-size: 0.9em;
+            font-style: italic;
+        }
+
+        .chat-input {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #cbd5e0;
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        #messageInput:focus {
+            border-color: #4299e1;
+        }
+
+        #sendButton {
+            padding: 12px 24px;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        #sendButton:hover {
+            background: #3182ce;
+        }
+
+        #sendButton:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+
+        .timestamp {
+            font-size: 0.7em;
+            color: #a0aec0;
+            margin-top: 5px;
+        }
+
+        .error {
+            color: #e53e3e;
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            Асинхронный чат
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot-message">
+                <div class="message-bubble">
+                    Привет! Я готов отвечать на ваши сообщения. Отправьте мне что-нибудь!
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="Введите ваше сообщение..." autocomplete="off">
+            <button id="sendButton">Отправить</button>
+        </div>
+    </div>
+
+    <script>
+        class Chat {
+            constructor() {
+                this.messagesContainer = document.getElementById('chatMessages');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.taskCheckIntervals = new Map();
+                this.apiBaseUrl = 'http://localhost:8080';
+
+                this.initEventListeners();
+            }
+
+            initEventListeners() {
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+            }
+
+            async sendMessage() {
+                const message = this.messageInput.value.trim();
+                if (!message) return;
+
+                // Очищаем поле ввода
+                this.messageInput.value = '';
+                this.setInputState(false);
+
+                // Добавляем сообщение пользователя в чат
+                this.addMessage(message, 'user');
+
+                // Добавляем индикатор загрузки для ответа бота
+                const loadingMessageId = this.addLoadingMessage();
+
+                try {
+                    // Шаг 1: Отправляем сообщение и получаем ID задачи
+                    const taskId = await this.sendMessageToAPI(message);
+
+                    // Обновляем сообщение с информацией о получении taskId
+                    this.updateLoadingMessage(loadingMessageId, `Задача создана (ID: ${taskId}). Ожидаем ответ...`);
+
+                    // Шаг 2: Начинаем проверять статус задачи
+                    this.startTaskChecking(taskId, loadingMessageId);
+
+                } catch (error) {
+                    this.updateLoadingMessage(loadingMessageId, `Ошибка: ${error.message}`, true);
+                    this.setInputState(true);
+                }
+            }
+
+            async sendMessageToAPI(message) {
+                const apiUrl = `${this.apiBaseUrl}/send_message`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        msg: message
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.req_id) {
+                    throw new Error('Неверный формат ответа: отсутствует id');
+                }
+
+                return data.req_id;
+            }
+
+            async checkTaskStatus(taskId) {
+                const apiUrl = `${this.apiBaseUrl}/check_status`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        req_id: taskId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Проверяем структуру ответа
+                if (!data.req_id || !data.status) {
+                    throw new Error('Неверный формат ответа: отсутствует req_id или status');
+                }
+
+                return {
+                    status: data.status,
+                    result: data.result || null
+                };
+            }
+
+            startTaskChecking(taskId, messageId) {
+                const checkInterval = setInterval(async () => {
+                    try {
+                        const result = await this.checkTaskStatus(taskId);
+
+                        if (result.status === 'done') {
+                            // Задача завершена, показываем результат
+                            clearInterval(checkInterval);
+                            this.taskCheckIntervals.delete(taskId);
+                            this.updateLoadingMessage(messageId, result.result || 'Ответ получен');
+                            this.setInputState(true);
+                        } else if (result.status === 'error') {
+                            // Произошла ошибка при обработке
+                            clearInterval(checkInterval);
+                            this.taskCheckIntervals.delete(taskId);
+                            this.updateLoadingMessage(messageId, `Ошибка обработки: ${result.result || 'Неизвестная ошибка'}`, true);
+                            this.setInputState(true);
+                        } else {
+                            // Задача еще в процессе, обновляем статус
+                            const statusMessages = {
+                                'processing': 'Обрабатываю ваш запрос...',
+                                'pending': 'Запрос в очереди...',
+                                'started': 'Начинаю обработку...'
+                            };
+                            const statusText = statusMessages[result.status] || `Статус: ${result.status}`;
+                            this.updateLoadingMessage(messageId, statusText);
+                        }
+                    } catch (error) {
+                        clearInterval(checkInterval);
+                        this.taskCheckIntervals.delete(taskId);
+                        this.updateLoadingMessage(messageId, `Ошибка при проверке статуса: ${error.message}`, true);
+                        this.setInputState(true);
+                    }
+                }, 1000);
+
+                this.taskCheckIntervals.set(taskId, checkInterval);
+            }
+
+            addMessage(text, type) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}-message`;
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+                bubble.textContent = text;
+
+                const timestamp = document.createElement('div');
+                timestamp.className = 'timestamp';
+                timestamp.textContent = new Date().toLocaleTimeString();
+
+                messageDiv.appendChild(bubble);
+                messageDiv.appendChild(timestamp);
+                this.messagesContainer.appendChild(messageDiv);
+
+                // Прокручиваем вниз
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+
+                return messageDiv;
+            }
+
+            addLoadingMessage() {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message bot-message';
+                messageDiv.id = 'loading_' + Date.now();
+
+                const bubble = document.createElement('div');
+                bubble.className = 'message-bubble';
+
+                const loadingSpinner = document.createElement('div');
+                loadingSpinner.className = 'loading';
+
+                const statusText = document.createElement('span');
+                statusText.className = 'status-text';
+                statusText.textContent = 'Отправляем запрос...';
+
+                bubble.appendChild(loadingSpinner);
+                bubble.appendChild(statusText);
+                messageDiv.appendChild(bubble);
+
+                this.messagesContainer.appendChild(messageDiv);
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+
+                return messageDiv.id;
+            }
+
+            updateLoadingMessage(messageId, text, isError = false) {
+                const messageDiv = document.getElementById(messageId);
+                if (!messageDiv) return;
+
+                const bubble = messageDiv.querySelector('.message-bubble');
+                bubble.innerHTML = '';
+
+                if (isError) {
+                    bubble.className = 'message-bubble error';
+                    bubble.textContent = text;
+
+                    // Добавляем timestamp для сообщения об ошибке
+                    const timestamp = document.createElement('div');
+                    timestamp.className = 'timestamp';
+                    timestamp.textContent = new Date().toLocaleTimeString();
+                    messageDiv.appendChild(timestamp);
+                } else {
+                    bubble.className = 'message-bubble';
+                    if (text.includes('Обрабатываю') || text.includes('Ожидаем') || text.includes('Статус:') || text.includes('Запрос в очереди') || text.includes('Начинаю обработку')) {
+                        const loadingSpinner = document.createElement('div');
+                        loadingSpinner.className = 'loading';
+                        loadingSpinner.style.display = 'inline-block';
+
+                        const statusText = document.createElement('span');
+                        statusText.className = 'status-text';
+                        statusText.textContent = text;
+                        statusText.style.marginLeft = '10px';
+
+                        bubble.appendChild(loadingSpinner);
+                        bubble.appendChild(statusText);
+                    } else {
+                        // Это финальный ответ
+                        bubble.textContent = text;
+
+                        // Добавляем timestamp для завершенного сообщения
+                        const timestamp = document.createElement('div');
+                        timestamp.className = 'timestamp';
+                        timestamp.textContent = new Date().toLocaleTimeString();
+                        messageDiv.appendChild(timestamp);
+                    }
+                }
+
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+            }
+
+            setInputState(enabled) {
+                this.sendButton.disabled = !enabled;
+                this.messageInput.disabled = !enabled;
+
+                if (enabled) {
+                    this.messageInput.focus();
+                }
+            }
+        }
+
+        // Инициализация чата при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            new Chat();
+        });
+    </script>
+</body>
+</html>
