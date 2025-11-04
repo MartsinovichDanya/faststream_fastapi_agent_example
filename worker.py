@@ -1,10 +1,8 @@
 import asyncio
-from typing import List
 
 from faststream import FastStream, Logger
 from faststream.kafka import KafkaBroker
 
-# from agent import Agent
 from fake_agent import Agent
 from models import Message
 
